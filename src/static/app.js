@@ -3,8 +3,59 @@ document.addEventListener("DOMContentLoaded", () => {
   const activitySelect = document.getElementById("activity");
   const signupForm = document.getElementById("signup-form");
   const messageDiv = document.getElementById("message");
+  const rankingsList = document.getElementById("rankings-list");
 
   let allActivities = {};
+
+  // Function to fetch and display rankings
+  async function fetchRankings() {
+    try {
+      const response = await fetch("/rankings");
+      const rankings = await response.json();
+      
+      if (rankings.length === 0) {
+        rankingsList.innerHTML = "<p><em>No students have signed up yet</em></p>";
+        return;
+      }
+      
+      // Create rankings table
+      let rankingsHTML = `
+        <table class="rankings-table">
+          <thead>
+            <tr>
+              <th>Rank</th>
+              <th>Student</th>
+              <th>Points</th>
+              <th>Activities</th>
+            </tr>
+          </thead>
+          <tbody>
+      `;
+      
+      rankings.forEach((student, index) => {
+        const rank = index + 1;
+        const medalEmoji = rank === 1 ? "🥇" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : "";
+        rankingsHTML += `
+          <tr class="${rank <= 3 ? 'top-rank' : ''}">
+            <td class="rank-cell">${medalEmoji} ${rank}</td>
+            <td class="email-cell">${student.email}</td>
+            <td class="points-cell">${student.points}</td>
+            <td class="activities-cell">${student.activity_count}</td>
+          </tr>
+        `;
+      });
+      
+      rankingsHTML += `
+          </tbody>
+        </table>
+      `;
+      
+      rankingsList.innerHTML = rankingsHTML;
+    } catch (error) {
+      rankingsList.innerHTML = "<p>Failed to load rankings. Please try again later.</p>";
+      console.error("Error fetching rankings:", error);
+    }
+  }
 
   // Function to render activities (filtered)
   function renderActivities(filteredActivities) {
@@ -67,6 +118,9 @@ document.addEventListener("DOMContentLoaded", () => {
       const response = await fetch("/activities");
       allActivities = await response.json();
       renderActivities(allActivities);
+      
+      // Also refresh rankings when activities change
+      fetchRankings();
     } catch (error) {
       activitiesList.innerHTML =
         "<p>Failed to load activities. Please try again later.</p>";
