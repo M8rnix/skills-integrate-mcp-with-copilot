@@ -77,6 +77,21 @@ activities = {
     }
 }
 
+# In-memory student points database
+# Format: {"student_email": {"points": int, "activities": [list of activities]}}
+student_points = {}
+
+# Initialize points for existing participants
+for activity_name, activity_data in activities.items():
+    for participant_email in activity_data["participants"]:
+        if participant_email not in student_points:
+            student_points[participant_email] = {"points": 10, "activities": [activity_name]}
+        else:
+            student_points[participant_email]["points"] += 10
+            if activity_name not in student_points[participant_email]["activities"]:
+                student_points[participant_email]["activities"].append(activity_name)
+
+
 
 @app.get("/")
 def root():
@@ -107,7 +122,20 @@ def signup_for_activity(activity_name: str, email: str):
 
     # Add student
     activity["participants"].append(email)
-    return {"message": f"Signed up {email} for {activity_name}"}
+    
+    # Award participation points (10 points for joining)
+    if email not in student_points:
+        student_points[email] = {"points": 0, "activities": []}
+    
+    student_points[email]["points"] += 10
+    if activity_name not in student_points[email]["activities"]:
+        student_points[email]["activities"].append(activity_name)
+    
+    return {
+        "message": f"Signed up {email} for {activity_name}",
+        "points_earned": 10,
+        "total_points": student_points[email]["points"]
+    }
 
 
 @app.delete("/activities/{activity_name}/unregister")
@@ -129,4 +157,59 @@ def unregister_from_activity(activity_name: str, email: str):
 
     # Remove student
     activity["participants"].remove(email)
+    
+    # Deduct points for unregistering (lose participation points)
+    if email in student_points:
+        if activity_name in student_points[email]["activities"]:
+            student_points[email]["activities"].remove(activity_name)
+            student_points[email]["points"] = max(0, student_points[email]["points"] - 10)
+    
     return {"message": f"Unregistered {email} from {activity_name}"}
+
+
+@app.get("/rankings")
+def get_rankings():
+    """Get student rankings based on points"""
+    # Convert to list and sort by points (descending)
+    rankings = [
+        {
+            "email": email,
+            "points": data["points"],
+            "activities": data["activities"],
+            "activity_count": len(data["activities"])
+        }
+        for email, data in student_points.items()
+    ]
+    
+    # Sort by points (highest first), then by activity count as tiebreaker
+    rankings.sort(key=lambda x: (x["points"], x["activity_count"]), reverse=True)
+    
+    return rankings
+
+
+@app.post("/activities/{activity_name}/award_points")
+def award_points(activity_name: str, email: str, points: int = 10):
+    """Award bonus points to a student for winning/excelling in an activity"""
+    # Validate activity exists
+    if activity_name not in activities:
+        raise HTTPException(status_code=404, detail="Activity not found")
+    
+    # Validate student is signed up for this activity
+    activity = activities[activity_name]
+    if email not in activity["participants"]:
+        raise HTTPException(
+            status_code=400,
+            detail="Student must be signed up for this activity"
+        )
+    
+    # Initialize student points if not exists
+    if email not in student_points:
+        student_points[email] = {"points": 0, "activities": []}
+    
+    # Award bonus points
+    student_points[email]["points"] += points
+    
+    return {
+        "message": f"Awarded {points} bonus points to {email} for {activity_name}",
+        "total_points": student_points[email]["points"]
+    }
